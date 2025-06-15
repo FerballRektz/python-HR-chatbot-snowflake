@@ -2,6 +2,7 @@ from snowflake.connector import connect
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_google_genai import GoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import PromptTemplate
+import pandas as pd 
 # gobal variables
 template = """Use the following pieces of context to answer the question at the end.
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
@@ -60,5 +61,15 @@ def chatbot_response(question :str, template :str,
     return answer
     
 
+
+# creatig a table for backend
+def create_table(snowflake_conn :object) -> pd.DataFrame:
+    cursor = snowflake_conn.cursor()
+    cursor.execute("""
+    SELECT * FROM PDF_RESULTS;
+    """)
+    rows = cursor.fetchall()
+    col_names = [desc[0] for desc in cursor.description]
+    return pd.DataFrame(rows, columns=col_names)
 
 
