@@ -1,7 +1,8 @@
 import streamlit as st
 import yaml
 import streamlit_functions
-
+import snowflake.snowpark as sp
+import pathlib as path
 # Import yaml 
 # Load your configuration (API keys)
 with open("keys.yml", "r") as file:
@@ -13,6 +14,57 @@ st.title("📤 Policy File Uploader Snowflake")
     # a welcome message to the user.
 st.write("Policy Data Table")
 
-# connect to account and get key
+connection_parameters = {
+    "account":  config['snowflake']['account'],
+    "user": config['snowflake']['user'],
+    "password": config['snowflake']['password']
+}
+session = sp.Session.builder.configs(connection_parameters).create()
+
+
+# check for intellection folder in directory
+file_name = path.Path('Intellection')
+
 df = streamlit_functions.create_table(config)
+df_current_files = [ "Intellection\\" + str(i) for i in df['FILEPATH']]
+
+#  creating checkboxes
+if not file_name.exists():
+    st.error("Directory does not exist.")
+else:
+    pdf_file_name = [str(pdf) + " (Uploaded)" if str(pdf) in df_current_files else str(pdf) for pdf in file_name.glob("*.pdf")] 
+    pdf_file_location = [str(pdf.absolute()) for pdf in file_name.glob("*.pdf")]
+
+    if not pdf_file_name:
+        st.warning("No PDF files found.")
+    else:
+        st.subheader("Select files to upload:")
+        selected_files = []
+        for file in pdf_file_name:
+            if st.checkbox(file):
+                selected_files.append(pdf_file_location[pdf_file_name.index(file)])
+
+        if st.button("Upload Selected"):
+            uploaded_count = 0
+            for file in selected_files:
+                try:
+                    session.file.put(
+                        local_file_name=str(file),
+                        stage_location= config['snowflake']['stage_name'],
+                        overwrite=True,
+                        auto_compress= False
+                    )
+                    st.success(f"✅ Uploaded {file}")
+                    uploaded_count += 1
+                except Exception as e:
+                    st.error(f"❌ Failed to upload {file}: {e}")
+
+            if uploaded_count == 0:
+                st.info("No files uploaded.")
+
+
+
+
+# show database
 st.dataframe(df)
+

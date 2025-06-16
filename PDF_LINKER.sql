@@ -39,7 +39,7 @@ def parse_pdf_fields(file_path):
     return merged_text_list
 $$;
 
-SELECT build_scoped_file_url('@PDF_STAGE','Implementation of Time in and Time Out System Policy.pdf')
+SELECT build_scoped_file_url('@PDF_STAGE','Implementation of Time in and Time Out System Policy.pdf');
 
 SELECT PDF_PARSE(build_scoped_file_url('@PDF_STAGE','Implementation of Time in and Time Out System Policy.pdf'));
 
