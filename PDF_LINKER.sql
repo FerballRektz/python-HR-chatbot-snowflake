@@ -11,55 +11,60 @@ CREATE OR REPLACE STREAM PDF_STREAM ON DIRECTORY(@PDF_STAGE);
 
 SELECT * FROM PDF_STREAM;
 
+
 CREATE OR REPLACE FUNCTION PDF_PARSE(file_path string)
 RETURNS VARIANT
 LANGUAGE PYTHON
 RUNTIME_VERSION = '3.12'
 HANDLER = 'parse_pdf_fields'
-PACKAGES=('typing-extensions','PyPDF2','snowflake-snowpark-python')
+PACKAGES=('typing-extensions','snowflake-snowpark-python','pypdf','langchain-community')
 AS
 $$
-from pathlib import Path
-import PyPDF2 as pypdf
 from io import BytesIO 
-import re
 from snowflake.snowpark.files import SnowflakeFile
+from langchain_community.document_loaders import PyPDFLoader
 
 def parse_pdf_fields(file_path):
-    with SnowflakeFile.open(file_path, 'rb') as f:
-       buffer = BytesIO(f.readall())
-    reader = pypdf.PdfReader(buffer) 
-    merged_text_list = []
-    for index in range(0,len(reader.pages)):
-        page_text = reader.pages[index].extract_text()
-        transformed_text = re.split(r'\n|•|\s{3,10}|\d{1} of \d{1}|^[0-9]$',page_text)
-        text_cleaned = [i for i in transformed_text if i !='']
-        merged_text_list.extend(text_cleaned)
-            
-    return merged_text_list
+    tmp_file_path = "/tmp/temp_file.pdf"
+    with SnowflakeFile.open(file_path, 'rb') as f_in, open(tmp_file_path, "wb") as f_out:
+        f_out.write(f_in.readall())
+
+    loader = PyPDFLoader(tmp_file_path).load()
+
+    text_list = [str(item.metadata) + "  true_page_number:" + str(page_number+1) + ", " + "page_content: " + item.page_content for page_number,item in enumerate(loader)]
+
+    return text_list
+
 $$;
 
-SELECT build_scoped_file_url('@PDF_STAGE','Implementation of Time in and Time Out System Policy.pdf');
-
+SELECT build_scoped_file_url('@PDF_STAGE','LPI TIMESHEET SUBMISSION POLICY.pdf')
 SELECT PDF_PARSE(build_scoped_file_url('@PDF_STAGE','Implementation of Time in and Time Out System Policy.pdf'));
 
-CREATE OR REPLACE TABLE PDF_RESULTS (FILEPATH VARCHAR, PARSED_PDF VARIANT);
 
-CREATE TASK PDF_INGEST
-WAREHOUSE = COMPUTE_WH
+
+
+CREATE OR REPLACE TABLE PDF_RESULTS (FILEPATH VARCHAR, PARSED_PDF VARIANT,LAST_MODIFIED DATETIME);
+
+CREATE OR REPLACE TASK PDF_INGEST
+WAREHOUSE = CHATBOT_TEST
 AFTER REFRESH_PDF_STAGE
 WHEN
   SYSTEM$STREAM_HAS_DATA('PDF_STREAM')
 AS
-  INSERT INTO PDF_RESULTS(FILEPATH, PARSED_PDF) 
+  INSERT INTO PDF_RESULTS(FILEPATH, PARSED_PDF,LAST_MODIFIED) 
   SELECT RELATIVE_PATH, 
-        PARSE_JSON(PDF_PARSE(build_scoped_file_url('@PDF_STAGE',RELATIVE_PATH))) 
+        PARSE_JSON(PDF_PARSE(build_scoped_file_url('@PDF_STAGE',RELATIVE_PATH))),
+        CURRENT_TIMESTAMP(2)
   FROM PDF_STREAM 
   WHERE METADATA$ACTION = 'INSERT';
+
 
 SELECT SYSTEM$TASK_DEPENDENTS_ENABLE('REFRESH_PDF_STAGE');
 
 
+SELECT * 
+FROM PDF_RESULTS; 
 
-SELECT *, 
-FROM PDF_RESULTS;
+
+
+DELETE FROM PDF_RESULTS WHERE FILEPATH = 'Implementation of Time in and Time Out System Policy.pdf'

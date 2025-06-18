@@ -9,7 +9,7 @@ with open("keys.yml", "r") as file:
     config = yaml.safe_load(file)
 
 
-st.title("Initial Chatbot")
+st.title("🏥 ASKHR")
 
 
 if "messages" not in st.session_state:

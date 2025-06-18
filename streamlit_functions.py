@@ -71,9 +71,9 @@ def create_table(key_info:object) -> pd.DataFrame:
         "password": key_info['snowflake']['password']
     }
     session = sp.Session.builder.configs(connection_parameters).create()
-    pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS").limit(8)
+    pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS")
     df = pd_df.to_pandas()
-    return df
+    return df.sort_values("LAST_MODIFIED").reset_index(drop=True)
 
     
 
