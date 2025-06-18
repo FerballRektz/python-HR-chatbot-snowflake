@@ -18,11 +18,10 @@ connection_parameters = {
     "account":  config['snowflake']['account'],
     "user": config['snowflake']['user'],
     "password": config['snowflake']['password'],
-    "role": config["snowflake"]["role"],  # optional
-    "warehouse": config["snowflake"]["warehouse"],  # optional
-    "database": config["snowflake"]["database"], # optional
-    "schema":  config["snowflake"]["schema"],  # optional
-    
+    "role": config["snowflake"]["role"],  
+    "warehouse": config["snowflake"]["warehouse"],  
+    "database": config["snowflake"]["database"], 
+    "schema":  config["snowflake"]["schema"],  
 }
 session = sp.Session.builder.configs(connection_parameters).create()
 
@@ -33,7 +32,7 @@ file_name = path.Path('Intellection')
 df = streamlit_functions.create_table(config)
 df_current_files = [ "Intellection\\" + str(i) for i in df['FILEPATH']]
 
-INTELLECTION_STR_LEN = 13;
+INTELLECTION_STR_LEN = 13
 
 #  creating checkboxes
 if not file_name.exists():

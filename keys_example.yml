@@ -1,9 +1,11 @@
 google:
-    api-key: 
+    api-key: "[API GEMINI INFO]"
 snowflake:
-    user: 
-    password: 
-    account:
-    warehouse:  
-    database: 
-    schema: 
+    user: "[USERNAME]"
+    password: "[PASSWORD]"
+    account: "[ACCOUNT LINK]"
+    role: "[ROLE]"
+    warehouse:  "[WAREHOUSE NAME]"
+    database: "[DATABASE NAME]"
+    schema: "[DATABASE SCHEMA]"
+    stage_name: "[STAGE NAME]"
