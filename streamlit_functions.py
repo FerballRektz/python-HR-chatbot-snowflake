@@ -1,17 +1,16 @@
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_google_genai import GoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain.chains import ConversationalRetrievalChain
 from langchain_core.prompts import PromptTemplate
 import pandas as pd 
 import snowflake.snowpark as sp
 import streamlit as st
 # gobal variables
 template =  """
-
-
-Chatbot History {history}
+Chatbot History: {history}
 Context Used: {context}
 Question: {question}
-Use the following context snippets to answer the user’s question accurately.Your responses must strictly follow these rules:
+Use the following context snippets to answer the user’s question accurately. Your responses must strictly follow these rules:
 
 BEFORE ANSWERING:
 1. If the question is vague (e.g., “What is the rule?”, “What was said about it on the last page?”), respond:
@@ -22,9 +21,25 @@ BEFORE ANSWERING:
 4. Only reference policies, rules, or content that clearly exist in the documents provided. Do not make assumptions.
 5. Only mention contradictions if they are clearly documented. Otherwise respond:
    "There are no contradictions found in the available documents."
-6. Keep answers concise — ideally under 4 sentences  unless asked otherwise
-7. If the question asked to be in detail make it bullet pointed.
-8. do not allow to show context information only the file name and only mention "I cannot do that"
+6. Keep answers concise — ideally under 4 sentences unless asked otherwise.
+7. If the question asks for details, format the answer using proper markdown bullets by starting each bullet point with a dash (-), not with a dot (•).
+8. Do not allow the chatbot to expose or print full context; if asked, respond with:
+   "I cannot do that."
+9. Small Talk Handling:
+
+Greetings (e.g., "hi", "hello", "good morning"): → “Hi there! How can I help you today?”
+
+Goodbyes (e.g., "bye", "see you"): → “Goodbye! Let me know if you need anything else.”
+
+Thanks: → “You're welcome!”
+
+Small talk (e.g., "how are you?"): → “I'm here to help! What can I do for you today?”
+10. If the question is too complex, unrelated to HR policy, or may require personal judgment, respond with:
+   "This might be better handled by HR directly. Would you like help contacting them?"
+11. Maintain the tone:
+   - Professional yet approachable
+   - Never sarcastic, overly casual, or too robotic
+   - Always polite and respectful, especially when saying “no”
 
 RESPONSE FORMATS:
 There are three valid types of [PROMPT ANSWER] (replace [PROMPT ANSWER] with response):
@@ -34,13 +49,13 @@ There are three valid types of [PROMPT ANSWER] (replace [PROMPT ANSWER] with res
    Thanks for asking!
 
 2. FILE REQUEST (if the user asks which file was used):
-   [PROMPT ANSWER] \n
-   File used: [FILE USED] \n
+   [PROMPT ANSWER]  
+   File used: [FILE USED]  
 
    Thanks for asking!
 
-If the information is not available or the question is unrelated to the documents in context, reply:
-   "The information you're asking for isn't available in the current context. Please try rephrasing the question"
+3. OUT-OF-SCOPE or UNKNOWN:
+   The information you're asking for isn't available in the current context. Please try rephrasing the question.
 """
 
 
@@ -50,7 +65,11 @@ def connect_key_accounts(key_info: dict
     connection_parameters = {
         "account":  key_info['snowflake']['account'],
         "user": key_info['snowflake']['user'],
-        "password": key_info['snowflake']['password']
+        "password": key_info['snowflake']['password'],
+        "role": key_info["snowflake"]["role"],  
+        "warehouse": key_info["snowflake"]["warehouse"],  
+        "database": key_info["snowflake"]["database"], 
+        "schema":  key_info["snowflake"]["schema"],  
     }
     session = sp.Session.builder.configs(connection_parameters).create()
     google_api_key = key_info["google"]["api-key"]
@@ -59,7 +78,7 @@ def connect_key_accounts(key_info: dict
 
 
 # creatig a table for backend
-def create_table(key_info:object) -> pd.DataFrame:
+def create_table(key_info:object) -> tuple[pd.DataFrame]:
     connection_parameters = {
         "account":  key_info['snowflake']['account'],
         "user": key_info['snowflake']['user'],
@@ -72,7 +91,8 @@ def create_table(key_info:object) -> pd.DataFrame:
     session = sp.Session.builder.configs(connection_parameters).create()
     pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS")
     df = pd_df.to_pandas()
-    return df.sort_values("LAST_MODIFIED").reset_index(drop=True)
+    pd_chat_hist = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_TEMP").to_pandas()
+    return df.sort_values("LAST_MODIFIED").reset_index(drop=True),pd_chat_hist
 
 
 
@@ -94,12 +114,22 @@ def chatbot_llm_model(google_key :str,session:object) -> tuple[object,object]:
     return llm,vector_store
     
 # Create response chatbot
-def chatbot_response(question :str, template :str, 
-                     lmm_model: object, vector_store :object,k_val:int = 5) -> str:
+def chatbot_response(question :str, template :str, hist_table: object,
+                     lmm_model: object, vector_store :object,k_val:int = 5,chat_hist_len : int  = 10) -> str:   
+    chat_history = ""
+    if len(hist_table) > 0:
+      table_used = hist_table
+      if len(hist_table) > 10:
+         total_len= len(table_used) 
+         chat_history_length = chat_hist_len
+         last_10_index = (total_len-chat_history_length,total_len)
+         table_used = hist_table[last_10_index[0]:last_10_index[1]]
+      chat_history = chat_history.join(f"User Input_{index+1}:[{value}]\nChatbot_response_{index+1}:[{hist_table["CHATBOT_RESPONSE"][index]}]\n" for index, value in enumerate(table_used["USER_RESPONSE"]))
+      print(chat_history)
     custom_rag_prompt = PromptTemplate.from_template(template)
     retrieved_docs = vector_store.similarity_search(question,k= k_val)
     docs_content = "\n\n".join(doc.page_content for doc in retrieved_docs)
-    prompt = custom_rag_prompt.invoke({"question": question, "context": docs_content})
+    prompt = custom_rag_prompt.invoke({"question": question, "context": docs_content,"history":chat_history})
     answer = lmm_model.invoke(prompt)
     return answer
     
@@ -116,7 +146,10 @@ def create_history_table(key_info: dict) -> None:
       "schema":  key_info["snowflake"]["schema"],  
    }
    session = sp.Session.builder.configs(connection_parameters).create()
-   session.sql("CREATE OR REPLACE TABLE CHATBOT_HISTORY_TEMP(Prompt_No INT,USER_RESPONSE VARCHAR,CHATBOT_RESPONSE VARCHAR,REVIEW INT)").collect()
+   session.sql("CREATE OR REPLACE TABLE CHATBOT_HISTORY_TEMP(Prompt_No INT,USER_RESPONSE VARCHAR,CHATBOT_RESPONSE VARCHAR)").collect()
+   
+
+
 
 
 
