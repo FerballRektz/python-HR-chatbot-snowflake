@@ -1,3 +1,4 @@
+*.xlsx
 *.ipynb
 keys.yml
 practice.sql

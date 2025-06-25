@@ -1,6 +1,5 @@
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_google_genai import GoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain.chains import ConversationalRetrievalChain
 from langchain_core.prompts import PromptTemplate
 import pandas as pd 
 import snowflake.snowpark as sp
@@ -127,7 +126,7 @@ def create_table(key_info:object) -> tuple[pd.DataFrame]:
     return pd_df
 
 # create table for chatbot history creation
-def chatbot_hist_to_excel(key_info : dict) -> None:
+def chatbot_hist_to_excel(key_info : dict) -> dict:
    connection_parameters = {
       "account":  key_info['snowflake']['account'],
       "user": key_info['snowflake']['user'],
@@ -140,7 +139,9 @@ def chatbot_hist_to_excel(key_info : dict) -> None:
    session = sp.Session.builder.configs(connection_parameters).create()
    pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_PERM").to_pandas()
    pd_df.loc[:,"USER"] = connection_parameters["user"]
-   pd_df.to_csv(f"{connection_parameters['user']}_CHAT_HISTORY")
+   pd_df.to_excel(f"{connection_parameters['user']}_CHAT_HISTORY.xlsx",index=False)
+
+   return pd_df
 
 
 
