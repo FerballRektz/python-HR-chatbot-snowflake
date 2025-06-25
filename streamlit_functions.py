@@ -7,13 +7,13 @@ import snowflake.snowpark as sp
 import streamlit as st
 # gobal variables
 template =  """
-Chatbot History: {history}
 Context Used: {context}
 Question: {question}
-Use the following context snippets to answer the user’s question accurately. Your responses must strictly follow these rules:
+Chat History : {history}
+Use the following context snippets and chat history to answer the user’s question accurately. Your responses must strictly follow these rules:
 
 BEFORE ANSWERING:
-1. If the question is vague (e.g., “What is the rule?”, “What was said about it on the last page?”), respond:
+1. If the question is vague  and not in the Chat History (e.g., “What is the rule?”, “What was said about it on the last page?”), respond:
    "Could you clarify your question?"
 2. If the question refers to a year or event not in the document context (e.g., “from 2010”), respond:
    "Sorry, the information about that time/event is not available in the provided documents."
@@ -76,6 +76,40 @@ def connect_key_accounts(key_info: dict
 
     return google_api_key,session
 
+# creating retrival_algo 
+def retrieval_algorithm(google_key :str,session:object,question:str,k_val :int = 3) -> tuple[object,object]:
+    # Load the table to pandas
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_key)
+    
+    pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS").to_pandas()
+    pages = [f"[FILE: {row}]\n{pd_df["PARSED_PDF"][index]}" for index, row in enumerate(pd_df["FILEPATH"])]
+    vector_store = InMemoryVectorStore.from_texts(pages, embeddings)
+    retrieved_docs = vector_store.similarity_search(question,k= k_val)
+   
+    retrieved_chat_hist = []
+    pd_hist = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_PERM").to_pandas()
+    if len(pd_hist) > 0:
+      if len(pd_hist) > 10:
+         pd_hist = pd_hist[:len(pd_hist)-11:-1]
+      chat_responses = [f"User: {pd_hist["USER_RESPONSE"]} Chatbot: {value}" for index,value in enumerate(pd_hist["CHATBOT_RESPONSE"])]  
+      vector_store_hist = InMemoryVectorStore.from_texts(chat_responses, embeddings)
+      retrieved_chat_hist = vector_store_hist.similarity_search(question,k = 10)
+   
+    return retrieved_docs,retrieved_chat_hist
+
+
+
+# chatbot response
+def chat_response(google_key: dict,template: str,context: list[str],question: str,chat_history : list[str]):
+   Prompt = PromptTemplate.from_template(template).invoke({
+       "context":context,
+       "question": question,
+       "history": chat_history
+   })
+   llm = GoogleGenerativeAI(model="models/gemini-2.0-flash", google_api_key=google_key)
+   return llm.invoke(Prompt)
+
+
 
 # creatig a table for backend
 def create_table(key_info:object) -> tuple[pd.DataFrame]:
@@ -89,53 +123,11 @@ def create_table(key_info:object) -> tuple[pd.DataFrame]:
         "schema":  key_info["snowflake"]["schema"],  
     }
     session = sp.Session.builder.configs(connection_parameters).create()
-    pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS")
-    df = pd_df.to_pandas()
-    pd_chat_hist = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_TEMP").to_pandas()
-    return df.sort_values("LAST_MODIFIED").reset_index(drop=True),pd_chat_hist
-
-
-
-# creating a function to use google api key to create llm and 
-def chatbot_llm_model(google_key :str,session:object) -> tuple[object,object]:
-    pages = []
-    # Load the table to pandas
     pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS").to_pandas()
-    for index, row in enumerate(pd_df["FILEPATH"]):
-        filename = row
-        parsed_content = pd_df["PARSED_PDF"][index]
-        # Ensure content is a clean string, not a raw representation
-        content_with_label = f"[FILE: {filename}]\n{parsed_content}"
-        pages.append(content_with_label)
-    llm = GoogleGenerativeAI(model="models/gemini-2.0-flash", google_api_key=google_key)
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_key)
-    vector_store = InMemoryVectorStore.from_texts(pages, embeddings)
+    return pd_df
 
-    return llm,vector_store
-    
-# Create response chatbot
-def chatbot_response(question :str, template :str, hist_table: object,
-                     lmm_model: object, vector_store :object,k_val:int = 5,chat_hist_len : int  = 10) -> str:   
-    chat_history = ""
-    if len(hist_table) > 0:
-      table_used = hist_table
-      if len(hist_table) > 10:
-         total_len= len(table_used) 
-         chat_history_length = chat_hist_len
-         last_10_index = (total_len-chat_history_length,total_len)
-         table_used = hist_table[last_10_index[0]:last_10_index[1]]
-      chat_history = chat_history.join(f"User Input_{index+1}:[{value}]\nChatbot_response_{index+1}:[{hist_table["CHATBOT_RESPONSE"][index]}]\n" for index, value in enumerate(table_used["USER_RESPONSE"]))
-      print(chat_history)
-    custom_rag_prompt = PromptTemplate.from_template(template)
-    retrieved_docs = vector_store.similarity_search(question,k= k_val)
-    docs_content = "\n\n".join(doc.page_content for doc in retrieved_docs)
-    prompt = custom_rag_prompt.invoke({"question": question, "context": docs_content,"history":chat_history})
-    answer = lmm_model.invoke(prompt)
-    return answer
-    
-
-# create table for chatbot_history 
-def create_history_table(key_info: dict) -> None:
+# create table for chatbot history creation
+def chatbot_hist_to_excel(key_info : dict) -> None:
    connection_parameters = {
       "account":  key_info['snowflake']['account'],
       "user": key_info['snowflake']['user'],
@@ -146,10 +138,9 @@ def create_history_table(key_info: dict) -> None:
       "schema":  key_info["snowflake"]["schema"],  
    }
    session = sp.Session.builder.configs(connection_parameters).create()
-   session.sql("CREATE OR REPLACE TABLE CHATBOT_HISTORY_TEMP(Prompt_No INT,USER_RESPONSE VARCHAR,CHATBOT_RESPONSE VARCHAR)").collect()
-   
-
-
+   pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_PERM").to_pandas()
+   pd_df.loc[:,"USER"] = connection_parameters["user"]
+   pd_df.to_csv(f"{connection_parameters['user']}_CHAT_HISTORY")
 
 
 
