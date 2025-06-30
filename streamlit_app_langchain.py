@@ -2,14 +2,12 @@ import streamlit as st
 import yaml
 import streamlit_functions_langchain
 from langchain.chat_models import init_chat_model
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import trim_messages
 from langchain_core.messages import HumanMessage
 from langgraph.graph import START, StateGraph
 import os
 
 # ------------------ PAGE CONFIG + STYLING ------------------
-st.set_page_config(page_title="❓ AskHR", layout="centered")
+st.set_page_config(page_title="🗨️ AskHR", layout="centered")
 
 st.markdown(
     """
@@ -52,7 +50,7 @@ st.markdown(
 st.markdown(
     """
     <div class="chatbot-banner">
-        <h1>❓  AskHR</h1>
+        <h1>🗨️  AskHR</h1>
         <p>Your Workplace Assistant</p>
     </div>
     """,
@@ -63,7 +61,7 @@ st.markdown(
 st.markdown(
     """
     <div class="chatbot-banner">
-        <h1>❓  AskHR</h1>
+        <h1>🗨️  AskHR</h1>
         <p>Your Workplace Assistant</p>
     </div>
     """,
@@ -73,7 +71,7 @@ st.markdown(
     """
     <div class="chatbot-banner">
         <h1>
-            <span style="display: inline-block; transform: rotate(50deg); margin-right: 6px;">❓</span>
+            <span style="display: inline-block; transform: rotate(0deg); margin-right: 6px;">🗨️</span>
             AskHR
         </h1>
         <p>Your Workplace Assistant</p>
@@ -92,26 +90,20 @@ google_key, session = streamlit_functions_langchain.connect_key_accounts(config)
 if not os.environ.get("GOOGLE_API_KEY"):
   os.environ["GOOGLE_API_KEY"] = google_key
 
+# get vector store 
+vector_store =streamlit_functions_langchain.retrieval_algorithm(google_key,session)
+k_val = 5
 
-st.session_state.memory = MemorySaver()
 
 model = init_chat_model("gemini-2.0-flash", model_provider="google_genai")
 
 config = {"configurable": {"thread_id": "abc123"}}
 
-trimmer = trim_messages(
-max_tokens=19,
-strategy="last",
-token_counter=len,
-include_system=True,
-allow_partial=False,
-start_on="human",
-)
+
 
 def call_model(state: streamlit_functions_langchain.State):
-    trimmed_hist = trimmer.invoke(state['messages'])
     prompt = streamlit_functions_langchain.prompt_template.invoke(
-        {'messages': trimmed_hist,"context":state['context']}
+        {'messages': state['messages'],"context":state['context'], "chat_history":state['chat_history']}
     )
     response = model.invoke(prompt)
     return {"messages": [response]}
@@ -120,7 +112,7 @@ def call_model(state: streamlit_functions_langchain.State):
 workflow = StateGraph(streamlit_functions_langchain.State)
 workflow.add_edge(START, "model")
 workflow.add_node("model", call_model)
-app = workflow.compile(checkpointer=st.session_state.memory)
+app = workflow.compile()
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -134,20 +126,23 @@ cols = st.columns(3)
 
 if cols[0].button("📅 Leave Policy"):
     st.session_state.messages.append({"role": "user", "content": "What is the leave policy?"})
-    context=streamlit_functions_langchain.retrieval_algorithm(google_key,session,"what is the leave policy of the company?")
-    chatbot_response = app.invoke({"messages":[HumanMessage("what is the leave policy of the company?")],"context":context},config)
+    context= vector_store.similarity_search("What is the leave policy?",k= k_val)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval("What is the leave policy?",google_key,session)
+    chatbot_response = app.invoke({"messages":[HumanMessage("what is the leave policy of the company?")],"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 
 if cols[1].button("⏱️ Timekeeping Rules"):
     st.session_state.messages.append({"role": "user", "content": "What are the company's timekeeping rules?"})
-    context=streamlit_functions_langchain.retrieval_algorithm(google_key,session,"What are the company's timekeeping rules?")
-    chatbot_response = app.invoke({"messages":[HumanMessage("What are the company's timekeeping rules?")],"context":context},config)
+    context= vector_store.similarity_search("What are the company's timekeeping rules?",k= k_val)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval("What are the company's timekeeping rules?",google_key,session)
+    chatbot_response = app.invoke({"messages":[HumanMessage("What are the company's timekeeping rules?")],"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 
 if cols[2].button("🧾 Timesheet Submission"):
     st.session_state.messages.append({"role": "user", "content": "How do I submit my timesheet and what is the deadline?"})
-    context=streamlit_functions_langchain.retrieval_algorithm(google_key,session,"How do I submit my timesheet and what is the deadline?")
-    chatbot_response = app.invoke({"messages":[HumanMessage("How do I submit my timesheet and what is the deadline?")],"context":context},config)
+    context= vector_store.similarity_search("How do I submit my timesheet and what is the deadline?",k= k_val)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval("How do I submit my timesheet and what is the deadline?",google_key,session)
+    chatbot_response = app.invoke({"messages":[HumanMessage("How do I submit my timesheet and what is the deadline?")],"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 
 # ------------------ CHAT INPUT ------------------
@@ -157,8 +152,10 @@ prompt = st.chat_input()
 if prompt:
     input_messages = [HumanMessage(prompt)]
     st.session_state.messages.append({"role": "user", "content": prompt})
-    context=streamlit_functions_langchain.retrieval_algorithm(google_key,session,prompt)
-    chatbot_response = app.invoke({"messages":input_messages,"context":context},config)
+    context= vector_store.similarity_search(prompt,k= k_val)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval(prompt,google_key,session)
+    print(retrived_chats)
+    chatbot_response = app.invoke({"messages":input_messages,"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 
 # ------------------ CHAT DISPLAY ------------------

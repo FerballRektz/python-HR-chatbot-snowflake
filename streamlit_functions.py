@@ -3,7 +3,8 @@ from langchain_google_genai import GoogleGenerativeAI, GoogleGenerativeAIEmbeddi
 from langchain_core.prompts import PromptTemplate
 import pandas as pd 
 import snowflake.snowpark as sp
-import streamlit as st
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 # gobal variables
 template =  """
 Context Used: {context}
