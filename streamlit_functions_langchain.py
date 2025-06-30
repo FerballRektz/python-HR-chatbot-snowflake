@@ -117,9 +117,8 @@ def retrieval_algorithm(google_key :str,session:object) -> tuple[object]:
 
     return vector_store
 
-def chat_retrieval(question:str,google_key : object, session:object)->list:
+def chat_retrieval(question:str, session:object)->list:
       
-   embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_key)    
    pd_hist = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_PERM").to_pandas()
    if len(pd_hist) > 0:
       if len(pd_hist) > 50:
