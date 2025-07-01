@@ -101,7 +101,7 @@ def retrieval_algorithm(google_key :str,session:object) -> tuple[object]:
     # Load the table to pandas
 
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_key)    
-    pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS").to_pandas()
+    pd_df = session.table("PDF_RESULTS").to_pandas()
 
     text_splitter = RecursiveCharacterTextSplitter(
     # Set a really small chunk size, just to show.
@@ -119,7 +119,7 @@ def retrieval_algorithm(google_key :str,session:object) -> tuple[object]:
 
 def chat_retrieval(question:str, session:object)->list:
       
-   pd_hist = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_PERM").to_pandas()
+   pd_hist = session.table("CHATBOT_HISTORY_PERM").to_pandas()
    if len(pd_hist) > 0:
       if len(pd_hist) > 50:
          pd_hist = pd_hist[:len(pd_hist)-31:-1].reset_index(drop=True) #last 10
@@ -144,7 +144,7 @@ def create_table(key_info:object) -> tuple[pd.DataFrame]:
         "schema":  key_info["snowflake"]["schema"],  
     }
     session = sp.Session.builder.configs(connection_parameters).create()
-    pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.PDF_RESULTS").to_pandas()
+    pd_df = session.table("PDF_RESULTS").to_pandas()
     return pd_df
 
 # create table for chatbot history creation
@@ -159,7 +159,7 @@ def chatbot_hist_to_excel(key_info : dict) -> dict:
       "schema":  key_info["snowflake"]["schema"],  
    }
    session = sp.Session.builder.configs(connection_parameters).create()
-   pd_df = session.table("HR_CHATBOT_BACKEND.PUBLIC.CHATBOT_HISTORY_PERM").to_pandas()
+   pd_df = session.table("CHATBOT_HISTORY_PERM").to_pandas()
    pd_df.loc[:,"USER"] = connection_parameters["user"]
    pd_df.to_excel(f"{connection_parameters['user']}_CHAT_HISTORY.xlsx",index=False)
 

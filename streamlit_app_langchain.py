@@ -82,7 +82,7 @@ st.markdown(
 
 
 # ------------------ CONFIGURATION ------------------
-with open("keys.yml", "r") as file:
+with open("key_password.yml", "r") as file:
     config = yaml.safe_load(file)
 
 google_key, session = streamlit_functions_langchain.connect_key_accounts(config)
@@ -127,21 +127,21 @@ cols = st.columns(3)
 if cols[0].button("📅 Leave Policy"):
     st.session_state.messages.append({"role": "user", "content": "What is the leave policy?"})
     context= vector_store.similarity_search("What is the leave policy?",k= k_val)
-    retrived_chats = streamlit_functions_langchain.chat_retrieval("What is the leave policy?",google_key,session)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval("What is the leave policy?",session)
     chatbot_response = app.invoke({"messages":[HumanMessage("what is the leave policy of the company?")],"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 
 if cols[1].button("⏱️ Timekeeping Rules"):
     st.session_state.messages.append({"role": "user", "content": "What are the company's timekeeping rules?"})
     context= vector_store.similarity_search("What are the company's timekeeping rules?",k= k_val)
-    retrived_chats = streamlit_functions_langchain.chat_retrieval("What are the company's timekeeping rules?",google_key,session)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval("What are the company's timekeeping rules?",session)
     chatbot_response = app.invoke({"messages":[HumanMessage("What are the company's timekeeping rules?")],"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 
 if cols[2].button("🧾 Timesheet Submission"):
     st.session_state.messages.append({"role": "user", "content": "How do I submit my timesheet and what is the deadline?"})
     context= vector_store.similarity_search("How do I submit my timesheet and what is the deadline?",k= k_val)
-    retrived_chats = streamlit_functions_langchain.chat_retrieval("How do I submit my timesheet and what is the deadline?",google_key,session)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval("How do I submit my timesheet and what is the deadline?",session)
     chatbot_response = app.invoke({"messages":[HumanMessage("How do I submit my timesheet and what is the deadline?")],"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 
@@ -153,8 +153,7 @@ if prompt:
     input_messages = [HumanMessage(prompt)]
     st.session_state.messages.append({"role": "user", "content": prompt})
     context= vector_store.similarity_search(prompt,k= k_val)
-    retrived_chats = streamlit_functions_langchain.chat_retrieval(prompt,google_key,session)
-    print(retrived_chats)
+    retrived_chats = streamlit_functions_langchain.chat_retrieval(prompt,session)
     chatbot_response = app.invoke({"messages":input_messages,"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
 

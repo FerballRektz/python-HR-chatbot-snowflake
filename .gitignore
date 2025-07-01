@@ -1,6 +1,7 @@
 *.xlsx
 *.ipynb
 keys.yml
+key_password.yml
 practice.sql
 practice.py
 __pycache__

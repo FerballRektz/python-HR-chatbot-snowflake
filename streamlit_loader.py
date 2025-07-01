@@ -1,11 +1,11 @@
 import streamlit as st
 import yaml
-import streamlit_functions
+import streamlit_functions_langchain
 import snowflake.snowpark as sp
 import pathlib as path
 # Import yaml 
 # Load your configuration (API keys)
-with open("keys.yml", "r") as file:
+with open("key_password.yml", "r") as file:
     config = yaml.safe_load(file)
 
 
@@ -29,7 +29,7 @@ session = sp.Session.builder.configs(connection_parameters).create()
 # check for intellection folder in directory
 file_name = path.Path('Intellection')
 
-df = streamlit_functions.create_table(config)
+df = streamlit_functions_langchain.create_table(config)
 df_current_files = [ "Intellection\\" + str(i) for i in df['FILEPATH']]
 
 INTELLECTION_STR_LEN = 13
