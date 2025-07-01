@@ -150,9 +150,14 @@ prompt_count = -1
 prompt = st.chat_input()
 
 if prompt:
-    input_messages = [HumanMessage(prompt)]
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    context= vector_store.similarity_search(prompt,k= k_val)
+    new_prompt = ''
+    forbidden_characters = ['/','\\']
+    for letter in prompt:
+        if letter not in forbidden_characters:
+            new_prompt =new_prompt+letter
+    input_messages = [HumanMessage(new_prompt)]
+    st.session_state.messages.append({"role": "user", "content": new_prompt})
+    context= vector_store.similarity_search(new_prompt,k= k_val)
     retrived_chats = streamlit_functions_langchain.chat_retrieval(prompt,session)
     chatbot_response = app.invoke({"messages":input_messages,"context":context,"chat_history":retrived_chats},config)
     st.session_state.messages.append({"role": "assistant", "content": chatbot_response['messages'][-1].content, "result": True})
